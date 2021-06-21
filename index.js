@@ -38,9 +38,12 @@ function executeCommand(retryCount) {
                 executeCommand(retryCount);
             }
         } else {
+            let parsedData = JSON.parse(stdout) ? JSON.parse(stdout) : {}
             let data = {
                 time: time,
-                unrelayedPackets: stdout
+                srcPacketsCount: parsedData.src && parsedData.src.length || 0,
+                dstPacketsCount: parsedData.dst && parsedData.dst.length || 0,
+                output: stdout,
             }
             let instance = new UnrelayPacket(data);
             instance.save((err) => {
