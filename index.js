@@ -116,6 +116,32 @@ function executeCommand(path, retryCount, callback) {
             let parsedData = {};
             try {
                 parsedData = JSON.parse(stdout);
+                let data = {
+                    pathName: path.pathName,
+                    time: time,
+                    srcPacketsCount: parsedData.src && parsedData.src.length || 0,
+                    dstPacketsCount: parsedData.dst && parsedData.dst.length || 0,
+                    srcData: parsedData.src || [],
+                    dstData: parsedData.dst || []
+                }
+                let instance = new UnrelayPacket(data);
+                instance.save((err) => {
+                    if (err) {
+                        console.log(`Error when storing into db: ${err}`)
+                        if (retryCount < 3) {
+                            console.log("Retrying again....");
+                            retryCount++;
+                            executeCommand(path, retryCount, () => {
+                                callback();
+                            });
+                        } else {
+                            callback();
+                        }
+                    } else {
+                        console.log("Updated into db of path:", path.pathName, " at ", time);
+                        callback();
+                    }
+                })
             } catch (e) {
                 console.log(`Error when parsing json: ${e}`)
                 if (retryCount < 3) {
@@ -128,32 +154,6 @@ function executeCommand(path, retryCount, callback) {
                     callback();
                 }
             }
-            let data = {
-                pathName: path.pathName,
-                time: time,
-                srcPacketsCount: parsedData.src && parsedData.src.length || 0,
-                dstPacketsCount: parsedData.dst && parsedData.dst.length || 0,
-                srcData: parsedData.src || [],
-                dstData: parsedData.dst || []
-            }
-            let instance = new UnrelayPacket(data);
-            instance.save((err) => {
-                if (err) {
-                    console.log(`Error when storing into db: ${err}`)
-                    if (retryCount < 3) {
-                        console.log("Retrying again....");
-                        retryCount++;
-                        executeCommand(path, retryCount, () => {
-                            callback();
-                        });
-                    } else {
-                        callback();
-                    }
-                } else {
-                    console.log("Updated into db of path:", path.pathName, " at ", time);
-                    callback();
-                }
-            })
         }
     })
 }
