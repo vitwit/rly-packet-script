@@ -2,13 +2,58 @@ require("dotenv").config()
 var mongoose = require("mongoose");
 var colors = require("colors");
 var cron = require('node-cron');
+var async = require("async");
+var bodyParser = require("body-parser");
+var express = require("express");
+var cors = require("cors");
+var morgan = require("morgan");
+var http = require("http");
+
 const { exec } = require("child_process");
 const UnrelayPacket = require("./schema.js");
+var { getStats } = require("./controller.js");
 
 const MONGOURL = process.env.MONGOURL
 const DBNAME = process.env.DBNAME
-var command = process.env.COMMAND
+const PORT = process.env.PORT || 3000
 
+let pathDetails = [
+    {
+        pathName: "akash-osmosis",
+        pathDir: "~/.rly-akash"
+    },
+    {
+        pathName: "cosmos-osmosis",
+        pathDir: "~/.rly-cosmos"
+    },
+    {
+        pathName: "sentinel-osmosis",
+        pathDir: "~/.rly-sentinel"
+    },
+    {
+        pathName: "regen-osmosis",
+        pathDir: "~/.rly-regen"
+    },
+    {
+        pathName: "iris-osmosis",
+        pathDir: "~/.rly-iris"
+    },
+    {
+        pathName: "core-osmosis",
+        pathDir: "~/.rly-core"
+    },
+    {
+        pathName: "crypto-osmosis",
+        pathDir: "~/.rly-crypto"
+    },
+]
+
+// let pathDetails = [
+//     {
+//         pathName: "demo",
+//         pathDir: "~/.relayer"
+//     }
+// ]
 
 const uri = `${MONGOURL}/${DBNAME}`
 mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true }, (error, result) => {
@@ -20,14 +65,40 @@ mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true }, (erro
         console.log(colors.green('URI :', MONGOURL))
         console.log(colors.green('DATABASE_NAME :', DBNAME))
         console.log(colors.green('*****************************************************************\n\n'))
+        var app = express();
+        app.use(bodyParser.json())
+        app.use(cors())
+        app.use(morgan("combined"));
+        var server = http.createServer(app);
+        app.get("/", (req, res) => {
+            res.status(200).send({
+                success: true,
+                status: "UP",
+            })
+        })
+
+        app.get("/stats", getStats)
+
+        console.log(colors.green("\n********** Server is up **********"))
+        console.log(colors.green("PORT :", PORT))
+        console.log(colors.green("**********************************\n"))
+        server.listen(PORT);
+
         cron.schedule('*/1 * * * *', () => {
             console.log('Running cron job at ', new Date());
-            executeCommand(0);
+            async.each(pathDetails, (path, cb) => {
+                executeCommand(path, 0, () => {
+                    cb();
+                });
+            }, (err) => {
+            })
         });
     }
 })
 
-function executeCommand(retryCount) {
+function executeCommand(path, retryCount, callback) {
+    let command = `rly q unrelayed-packets ${path.pathName} --home ${path.pathDir}`
+    setTimeout(() => { }, 1000);
     exec(command, (err, stdout, stderr) => {
         let time = new Date();
         if (err || stderr) {
@@ -35,15 +106,35 @@ function executeCommand(retryCount) {
             if (retryCount < 3) {
                 console.log("Retrying again....");
                 retryCount++;
-                executeCommand(retryCount);
+                executeCommand(path, retryCount, () => {
+                    callback();
+                });
+            } else {
+                callback();
             }
         } else {
-            let parsedData = JSON.parse(stdout) ? JSON.parse(stdout) : {}
+            let parsedData = {};
+            try {
+                parsedData = JSON.parse(stdout);
+            } catch (e) {
+                console.log(`Error when parsing json: ${e}`)
+                if (retryCount < 3) {
+                    console.log("Retrying again....");
+                    retryCount++;
+                    executeCommand(path, retryCount, () => {
+                        callback();
+                    });
+                } else {
+                    callback();
+                }
+            }
             let data = {
+                pathName: path.pathName,
                 time: time,
                 srcPacketsCount: parsedData.src && parsedData.src.length || 0,
                 dstPacketsCount: parsedData.dst && parsedData.dst.length || 0,
-                output: stdout,
+                srcData: parsedData.src || [],
+                dstData: parsedData.dst || []
             }
             let instance = new UnrelayPacket(data);
             instance.save((err) => {
@@ -52,10 +143,15 @@ function executeCommand(retryCount) {
                     if (retryCount < 3) {
                         console.log("Retrying again....");
                         retryCount++;
-                        executeCommand(retryCount);
+                        executeCommand(path, retryCount, () => {
+                            callback();
+                        });
+                    } else {
+                        callback();
                     }
                 } else {
-                    console.log("Updated into db at ", time);
+                    console.log("Updated into db of path:", path.pathName, " at ", time);
+                    callback();
                 }
             })
         }

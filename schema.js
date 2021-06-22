@@ -8,4 +8,6 @@ const schema = new Schema({
   strict: false,
 })
 
+schema.index({ time: 1 })
+
 module.exports = mongoose.model('unrelay_stats', schema);
