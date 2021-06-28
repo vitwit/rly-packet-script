@@ -9,6 +9,7 @@ var cors = require("cors");
 var morgan = require("morgan");
 var http = require("http");
 
+const Telegram = require('telegram-notify');
 const { exec } = require("child_process");
 const UnrelayPacket = require("./schema.js");
 var { getStats } = require("./controller.js");
@@ -16,46 +17,66 @@ var { getStats } = require("./controller.js");
 const MONGOURL = process.env.MONGOURL
 const DBNAME = process.env.DBNAME
 const PORT = process.env.PORT || 3000
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID
+const PACKETS_THRESHOLD = parseInt(process.env.PACKETS_THRESHOLD)
 
 let pathDetails = [
     {
         pathName: "akash-osmosis",
-        pathDir: "~/.rly-akash"
+        pathDir: "~/.rly-akash",
+        srcName: "akash",
+        dstName: "osmosis"
     },
     {
         pathName: "cosmos-osmosis",
-        pathDir: "~/.rly-cosmos"
+        pathDir: "~/.rly-cosmos",
+        srcName: "cosmos",
+        dstName: "osmosis"
     },
     {
         pathName: "sentinel-osmosis",
-        pathDir: "~/.rly-sentinel"
+        pathDir: "~/.rly-sentinel",
+        srcName: "sentinel",
+        dstName: "osmosis"
     },
     {
         pathName: "regen-osmosis",
-        pathDir: "~/.rly-regen"
+        pathDir: "~/.rly-regen",
+        srcName: "regen",
+        dstName: "osmosis"
     },
     {
         pathName: "iris-osmosis",
-        pathDir: "~/.rly-iris"
+        pathDir: "~/.rly-iris",
+        srcName: "iris",
+        dstName: "osmosis"
     },
     {
         pathName: "core-osmosis",
-        pathDir: "~/.rly-core"
+        pathDir: "~/.rly-core",
+        srcName: "core",
+        dstName: "osmosis"
     },
     {
         pathName: "crypto-osmosis",
-        pathDir: "~/.rly-crypto"
+        pathDir: "~/.rly-crypto",
+        srcName: "crypto",
+        dstName: "osmosis"
     },
 ]
 
 // let pathDetails = [
 //     {
 //         pathName: "demo",
-//         pathDir: "~/.relayer"
+//         pathDir: "~/.relayer",
+//         srcName: "ibc-0",
+//         dstName: "ibc-1"
 //     }
 // ]
 
 const uri = `${MONGOURL}/${DBNAME}`
+let notify = new Telegram({ token: TELEGRAM_TOKEN, chatId: TELEGRAM_CHAT_ID });
 mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true }, (error, result) => {
     if (error) {
         console.log('Error in connecting to DB');
@@ -123,6 +144,18 @@ function executeCommand(path, retryCount, callback) {
                     dstPacketsCount: parsedData.dst && parsedData.dst.length || 0,
                     srcData: parsedData.src || [],
                     dstData: parsedData.dst || []
+                }
+                if (data.srcPacketsCount > PACKETS_THRESHOLD) {
+                    notify.send(`Unrelayed packets count of ${path.srcName} chain in ${path.pathName} path is greater than ${PACKETS_THRESHOLD}.
+Unrelayed packets are ${data.srcData.join(",")}`)
+                        .then(() => { })
+                        .catch((e) => { console.log("Error when alerting...", e); })
+                }
+                if (data.dstPacketsCount > PACKETS_THRESHOLD) {
+                    notify.send(`Unrelayed packets count of ${path.dstName} chain in ${path.pathName} path is greater than ${PACKETS_THRESHOLD}.
+Unrelayed packets are ${data.dstData.join(",")}`)
+                        .then(() => { })
+                        .catch((e) => { console.log("Error when alerting...", e); })
                 }
                 let instance = new UnrelayPacket(data);
                 instance.save((err) => {
