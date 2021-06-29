@@ -123,7 +123,7 @@ function executeCommand(path, retryCount, callback) {
     exec(command, (err, stdout, stderr) => {
         let time = new Date();
         if (err || stderr) {
-            console.log(`Got error: ${err.message} at ${time}`);
+            console.log(`Got error: ${err} at ${time}`);
             if (retryCount < 3) {
                 console.log("Retrying again....");
                 retryCount++;
@@ -145,18 +145,6 @@ function executeCommand(path, retryCount, callback) {
                     srcData: parsedData.src || [],
                     dstData: parsedData.dst || []
                 }
-                if (data.srcPacketsCount > PACKETS_THRESHOLD) {
-                    notify.send(`Unrelayed packets count of ${path.srcName} chain in ${path.pathName} path is greater than ${PACKETS_THRESHOLD}.
-Unrelayed packets are ${data.srcData.join(",")}`)
-                        .then(() => { })
-                        .catch((e) => { console.log("Error when alerting...", e); })
-                }
-                if (data.dstPacketsCount > PACKETS_THRESHOLD) {
-                    notify.send(`Unrelayed packets count of ${path.dstName} chain in ${path.pathName} path is greater than ${PACKETS_THRESHOLD}.
-Unrelayed packets are ${data.dstData.join(",")}`)
-                        .then(() => { })
-                        .catch((e) => { console.log("Error when alerting...", e); })
-                }
                 let instance = new UnrelayPacket(data);
                 instance.save((err) => {
                     if (err) {
@@ -171,8 +159,30 @@ Unrelayed packets are ${data.dstData.join(",")}`)
                             callback();
                         }
                     } else {
-                        console.log("Updated into db of path:", path.pathName, " at ", time);
-                        callback();
+                        let isAlerting = false;
+                        if (data.srcPacketsCount > PACKETS_THRESHOLD) {
+                            isAlerting = true;
+                            notify.send(`Unrelayed packets count of ${path.srcName} chain in ${path.pathName} path is greater than ${PACKETS_THRESHOLD}.
+Unrelayed packets are ${data.srcData.join(",")}`)
+                                .then(() => { })
+                                .catch((e) => { console.log("Error when alerting...", e); })
+                        }
+                        if (data.dstPacketsCount > PACKETS_THRESHOLD) {
+                            isAlerting = true;
+                            notify.send(`Unrelayed packets count of ${path.dstName} chain in ${path.pathName} path is greater than ${PACKETS_THRESHOLD}.
+Unrelayed packets are ${data.dstData.join(",")}`)
+                                .then(() => { })
+                                .catch((e) => { console.log("Error when alerting...", e); })
+                        }
+                        if (isAlerting) {
+                            relayPackets(path, retryCount, () => {
+                                console.log("Updated into db of path:", path.pathName, " at ", time);
+                                callback();
+                            });
+                        } else {
+                            console.log("Updated into db of path:", path.pathName, " at ", time);
+                            callback();
+                        }
                     }
                 })
             } catch (e) {
@@ -187,6 +197,27 @@ Unrelayed packets are ${data.dstData.join(",")}`)
                     callback();
                 }
             }
+        }
+    })
+}
+
+function relayPackets(path, retryCount, callback) {
+    let command = `rly tx relay-packets ${path.pathName} --home ${path.pathDir}`
+    setTimeout(() => { }, 1000);
+    exec(command, (err, stdout, stderr) => {
+        if (err || stderr) {
+            console.log("Got error when relaying packets:", err);
+            if (retryCount < 3) {
+                console.log("Retrying relay packets command again....");
+                retryCount++;
+                relayPackets(path, retryCount, () => {
+                    callback();
+                });
+            } else {
+                callback();
+            }
+        } else {
+            callback();
         }
     })
 }
