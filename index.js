@@ -12,7 +12,8 @@ var http = require("http");
 const Telegram = require('telegram-notify');
 const { exec } = require("child_process");
 const UnrelayPacket = require("./schema.js");
-var { getStats } = require("./controller.js");
+var { getStats, getRelayedPackets } = require("./controller.js");
+const { pathDetails } = require("./constants.js");
 
 const MONGOURL = process.env.MONGOURL
 const DBNAME = process.env.DBNAME
@@ -20,60 +21,6 @@ const PORT = process.env.PORT || 3000
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID
 const PACKETS_THRESHOLD = parseInt(process.env.PACKETS_THRESHOLD)
-
-let pathDetails = [
-    {
-        pathName: "akash-osmosis",
-        pathDir: "~/.rly-akash",
-        srcName: "akash",
-        dstName: "osmosis"
-    },
-    {
-        pathName: "cosmos-osmosis",
-        pathDir: "~/.rly-cosmos",
-        srcName: "cosmos",
-        dstName: "osmosis"
-    },
-    {
-        pathName: "sentinel-osmosis",
-        pathDir: "~/.rly-sentinel",
-        srcName: "sentinel",
-        dstName: "osmosis"
-    },
-    {
-        pathName: "regen-osmosis",
-        pathDir: "~/.rly-regen",
-        srcName: "regen",
-        dstName: "osmosis"
-    },
-    {
-        pathName: "iris-osmosis",
-        pathDir: "~/.rly-iris",
-        srcName: "iris",
-        dstName: "osmosis"
-    },
-    {
-        pathName: "core-osmosis",
-        pathDir: "~/.rly-core",
-        srcName: "core",
-        dstName: "osmosis"
-    },
-    {
-        pathName: "crypto-osmosis",
-        pathDir: "~/.rly-crypto",
-        srcName: "crypto",
-        dstName: "osmosis"
-    },
-]
-
-// let pathDetails = [
-//     {
-//         pathName: "demo",
-//         pathDir: "~/.relayer",
-//         srcName: "ibc-0",
-//         dstName: "ibc-1"
-//     }
-// ]
 
 const uri = `${MONGOURL}/${DBNAME}`
 let notify = new Telegram({ token: TELEGRAM_TOKEN, chatId: TELEGRAM_CHAT_ID });
@@ -99,6 +46,7 @@ mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true }, (erro
         })
 
         app.get("/stats", getStats)
+        app.get("/relayed-packets/:path", getRelayedPackets)
 
         console.log(colors.green("\n********** Server is up **********"))
         console.log(colors.green("PORT :", PORT))
