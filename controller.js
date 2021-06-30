@@ -125,7 +125,7 @@ function getRelayedTxs(url, srcChannel, dstChannel, limit, offset, orderBy, cb) 
     let reqUrl = `${url}/cosmos/tx/v1beta1/txs?events=recv_packet.packet_src_channel='${srcChannel}'&events=recv_packet.packet_dst_channel='${dstChannel}'`
     reqUrl = limit != 100 ? `${reqUrl}&pagination.limit=${limit}` : reqUrl;
     reqUrl = offset ? `${reqUrl}&pagination.offset=${offset}` : reqUrl;
-    reqUrl = offset ? `${reqUrl}&order_by=${orderBy}` : reqUrl;
+    reqUrl = orderBy ? `${reqUrl}&order_by=${orderBy}` : reqUrl;
     axios({
         method: "get",
         url: reqUrl,
