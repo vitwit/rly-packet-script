@@ -69,6 +69,16 @@ const pathDetails = [
         srcChannel: "channel-10",
         dstChannel: "channel-5"
     },
+    {
+        pathName: "iov-osmosis",
+        pathDir: "~/.rly-iov",
+        srcName: "iov",
+        dstName: "osmosis",
+        srcLcd: "https://rpc.iov-mainnet-ibc.iov.one",
+        dstLcd: "http://143.198.234.89:1317",
+        srcChannel: "channel-2",
+        dstChannel: "channel-15"
+    },
 ]
 
 // const pathDetails = [
