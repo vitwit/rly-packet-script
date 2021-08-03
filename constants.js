@@ -74,7 +74,7 @@ const pathDetails = [
         pathDir: "~/.rly-iov",
         srcName: "iov",
         dstName: "osmosis",
-        srcLcd: "https://rpc.iov-mainnet-ibc.iov.one",
+        srcLcd: "https://api.iov-mainnet-ibc.iov.one",
         dstLcd: "http://143.198.234.89:1317",
         srcChannel: "channel-2",
         dstChannel: "channel-15"
