@@ -5,6 +5,7 @@ const rax = require("retry-axios");
 const axios = require('axios');
 var async = require('async');
 const interceptorId = rax.attach();
+const lodash = require('lodash');
 
 const raxConfig = {
     retry: 3,
@@ -118,7 +119,6 @@ const getRelayedPackets = (req, res) => {
             })
         }
     });
-
 }
 
 function getRelayedTxs(url, srcChannel, dstChannel, limit, offset, orderBy, cb) {
@@ -196,7 +196,224 @@ function formatTxs(txs, srcChain, dstChain, srcChannel, dstChannel, cb) {
     })
 }
 
+const getUnrelayedPackets = (req, res) => {
+    let { params } = req
+    let obj = pathDetails.find(x => x.pathName == params.path)
+    if (!obj) {
+        res.status(400).send({
+            success: false,
+            message: "Invalid path",
+            error: true
+        })
+        return;
+    }
+    let out = {
+    };
+    async.waterfall([
+        (next) => {
+            getPacketCommitments(obj.srcLcd, obj.srcChannel, [], true, "", (err, data) => {
+                if (err) {
+                    next(err);
+                } else {
+                    next(null, data);
+                }
+            })
+        }, (srcPackets, next) => {
+            if (srcPackets.length) {
+                getUnreceivedPackets(obj.srcLcd, obj.dstLcd, obj.srcChannel, obj.dstChannel, srcPackets.join(","), (err, data) => {
+                    if (err) {
+                        next(err);
+                    } else {
+                        next(null, data);
+                    }
+                })
+            } else {
+                next(null, []);
+            }
+        }, (txs, next) => {
+            formatSendTxs(txs, obj.srcName, obj.dstName, (data) => {
+                next(null, data);
+            })
+        }, (srcTxs, next) => {
+            getPacketCommitments(obj.dstLcd, obj.dstChannel, [], true, "", (err, data) => {
+                if (err) {
+                    next(err);
+                } else {
+                    next(null, srcTxs, data);
+                }
+            })
+        }, (srcTxs, dstPackets, next) => {
+            if (dstPackets.length) {
+                getUnreceivedPackets(obj.dstLcd, obj.srcLcd, obj.dstChannel, obj.srcChannel, dstPackets.join(","), (err, data) => {
+                    if (err) {
+                        next(err);
+                    } else {
+                        next(null, srcTxs, data);
+                    }
+                })
+            } else {
+                next(null, srcTxs, []);
+            }
+        }, (srcTxs, dstData, next) => {
+            formatSendTxs(dstData, obj.dstName, obj.srcName, (dstTxs) => {
+                out = lodash.sortBy(srcTxs.concat(dstTxs), x => new Date(x.time)).reverse();
+                next(null);
+            })
+        },
+    ], (err) => {
+        console.log("Err..", err);
+        if (err) {
+            res.status(400).send({
+                success: false,
+                message: err.message || "Got error",
+                error: true
+            })
+        } else {
+            res.status(200).send({
+                success: true,
+                data: out
+            })
+        }
+    });
+}
+
+function getPacketCommitments(url, channel, packets, initial, nextKey, cb) {
+    let reqUrl = `${url}/ibc/core/channel/v1beta1/channels/${channel}/ports/transfer/packet_commitments?pagination.limit=100`
+    reqUrl = !initial ? `${reqUrl}&pagination.key=${encodeURIComponent(nextKey)}` : reqUrl;
+
+    axios({
+        method: "get",
+        url: reqUrl,
+        raxConfig
+    })
+        .then(resp => {
+            if (resp.data && resp.data.commitments && resp.data.commitments.length) {
+                let seqs = resp.data.commitments.map(x => x.sequence);
+                packets = packets.concat(seqs);
+                if (resp.data.pagination && resp.data.pagination.next_key) {
+                    getPacketCommitments(url, channel, packets, false, resp.data.pagination.next_key, (err, data) => {
+                        cb(err, data);
+                    })
+                } else {
+                    cb(null, packets);
+                }
+            } else {
+                cb(null, packets);
+            }
+        })
+        .catch(err => {
+            cb(err, packets);
+        });
+}
+
+function getUnreceivedPackets(srcLcd, dstLcd, srcChannel, dstChannel, sequences, cb) {
+    let reqUrl = `${dstLcd}/ibc/core/channel/v1beta1/channels/${dstChannel}/ports/transfer/packet_commitments/${sequences}/unreceived_packets`;
+
+    axios({
+        method: "get",
+        url: reqUrl,
+        raxConfig
+    })
+        .then(resp => {
+            if (resp.data && resp.data.sequences && resp.data.sequences.length) {
+                let data = [];
+                async.each(resp.data.sequences, (seq, callback) => {
+                    let txUrl = `${srcLcd}/cosmos/tx/v1beta1/txs?events=send_packet.packet_dst_channel='${dstChannel}'&events=send_packet.packet_src_channel='${srcChannel}'&events=send_packet.packet_sequence='${seq}'`
+                    axios({
+                        method: "get",
+                        url: txUrl,
+                        raxConfig
+                    })
+                        .then(res => {
+                            if (res.data && res.data.tx_responses && res.data.tx_responses.length) {
+                                let obj = res.data.tx_responses[0];
+                                obj.packetSeq = seq;
+                                data.push(obj);
+                                callback();
+                            } else {
+                                callback();
+                            }
+                        })
+                        .catch((err) => {
+                            callback(err);
+                        })
+                }, (err) => {
+                    if (err) {
+                        cb(err, []);
+                    } else {
+                        cb(null, data);
+                    }
+                })
+            } else {
+                cb(null, []);
+            }
+        })
+        .catch(err => {
+            cb(err, []);
+        });
+}
+
+function formatSendTxs(txs, srcName, dstName, cb) {
+    let data = [];
+    async.eachSeries(txs, (tx, next) => {
+        let obj = {
+            from: srcName,
+            to: dstName,
+            time: tx.timestamp,
+            height: tx.height,
+            hash: tx.txhash,
+            code: tx.code,
+        }
+        if (tx.logs.length) {
+            async.each(tx.logs, (log, callback) => {
+                if (log.events && log.events.length) {
+                    let sendPacket = log.events.find(x => x.type == "send_packet");
+                    if (sendPacket) {
+                        let correctPacket = sendPacket.attributes.find(x => x.value == tx.packetSeq);
+                        if (correctPacket) {
+                            let packetDataObj = sendPacket.attributes.find(x => x.key == "packet_data")
+                            if (packetDataObj) {
+                                try {
+                                    let packetData = JSON.parse(packetDataObj.value);
+                                    obj.amount = packetData.amount || "";
+                                    obj.denom = packetData.denom || "";
+                                    obj.fromAddr = packetData.sender || "";
+                                    obj.toAddr = packetData.receiver || "";
+                                    obj.sequence = sendPacket.attributes.find(x => x.key == "packet_sequence").value || "";
+                                    obj.srcChannel = sendPacket.attributes.find(x => x.key == "packet_src_channel").value || "";
+                                    packet.dstChannel = sendPacket.attributes.find(x => x.key == "packet_dst_channel").value || "";
+                                    callback();
+                                } catch (e) {
+                                    console.log("JSON parse error...", e);
+                                    callback();
+                                }
+                            } else {
+                                callback();
+                            }
+                        } else {
+                            callback();
+                        }
+                    } else {
+                        callback();
+                    }
+                } else {
+                    callback();
+                }
+            }, () => {
+                data.push(obj);
+                next();
+            })
+        } else {
+            data.push(obj);
+            next();
+        }
+    }, () => {
+        cb(data);
+    })
+}
+
 module.exports = {
     getStats,
-    getRelayedPackets
+    getRelayedPackets,
+    getUnrelayedPackets
 }

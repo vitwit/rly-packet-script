@@ -12,7 +12,7 @@ var http = require("http");
 const Telegram = require('telegram-notify');
 const { exec } = require("child_process");
 const UnrelayPacket = require("./schema.js");
-var { getStats, getRelayedPackets } = require("./controller.js");
+var { getStats, getRelayedPackets, getUnrelayedPackets } = require("./controller.js");
 const { pathDetails } = require("./constants.js");
 
 const MONGOURL = process.env.MONGOURL
@@ -47,6 +47,7 @@ mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true }, (erro
 
         app.get("/stats", getStats)
         app.get("/relayed-packets/:path", getRelayedPackets)
+        app.get("/unrelayed/:path", getUnrelayedPackets)
 
         console.log(colors.green("\n********** Server is up **********"))
         console.log(colors.green("PORT :", PORT))

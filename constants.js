@@ -14,7 +14,7 @@ const pathDetails = [
         pathDir: "~/.rly-cosmos",
         srcName: "cosmos",
         dstName: "osmosis",
-        srcLcd: "http://159.203.104.207:1317",
+        srcLcd: "http://cosmosrpc.sg-1.online:1317",
         dstLcd: "http://143.198.234.89:1317",
         srcChannel: "channel-141",
         dstChannel: "channel-0"
