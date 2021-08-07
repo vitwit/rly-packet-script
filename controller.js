@@ -381,7 +381,7 @@ function formatSendTxs(txs, srcName, dstName, cb) {
                                     obj.toAddr = packetData.receiver || "";
                                     obj.sequence = sendPacket.attributes.find(x => x.key == "packet_sequence").value || "";
                                     obj.srcChannel = sendPacket.attributes.find(x => x.key == "packet_src_channel").value || "";
-                                    packet.dstChannel = sendPacket.attributes.find(x => x.key == "packet_dst_channel").value || "";
+                                    obj.dstChannel = sendPacket.attributes.find(x => x.key == "packet_dst_channel").value || "";
                                     callback();
                                 } catch (e) {
                                     console.log("JSON parse error...", e);
