@@ -123,7 +123,7 @@ Unrelayed packets are ${data.dstData.join(",")}`)
                                 .then(() => { })
                                 .catch((e) => { console.log("Error when alerting...", e); })
                         }
-                        if (isAlerting) {
+                        if (data.srcPacketsCount || data.dstPacketsCount) {
                             relayPackets(path, retryCount, () => {
                                 console.log("Updated into db of path:", path.pathName, " at ", time);
                                 callback();
